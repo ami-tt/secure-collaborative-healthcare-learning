@@ -1,215 +1,188 @@
 # Secure Collaborative Healthcare Learning System
 
-
-
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
-
 [![React](https://img.shields.io/badge/Frontend-React%2018-61DAFB.svg)](https://react.dev/)
-
-[![Flower](https://img.shields.io/badge/Federated%20Learning-Flower%20(flwr)-FF6F00.svg)](https://flower.ai/)
-
+[![Tailwind](https://img.shields.io/badge/CSS-Tailwind%20CSS-38B2AC.svg)](https://tailwindcss.com/)
 [![PyTorch](https://img.shields.io/badge/ML%20Framework-PyTorch-EE4C2C.svg)](https://pytorch.org/)
 
-[![Security](https://img.shields.io/badge/Privacy-Differential%20Privacy%20(DP)-red.svg)](#privacy--security-architecture)
-
-
-
-A production-grade, decentralized federated learning platform engineered for hospitals and clinical research centers. The system enables multi-institutional collaborative training of predictive machine learning models without transferring or exposing raw patient datasets.
-
-
+**Secure Collaborative Healthcare Learning System** is a prototype platform that enables researchers and clinicians to explore cardiovascular disease prediction using real‑world‑like health data. The system provides a modern React UI, a FastAPI backend with JWT‑based authentication, role‑based access control, and a set of machine‑learning models for classification and evaluation.
 
 ---
 
+## 📦 Implemented Features
 
-
-## 🏛 System Architecture Overview
-
-
-
-```
-
-                      +---------------------------------------+
-
-                      |         React + Tailwind UI           |
-
-                      | (Admin / Hospital Admin / Researcher) |
-
-                      +-------------------+-------------------+
-
-                                          | HTTPS / WebSockets
-
-                                          v
-
-                      +---------------------------------------+
-
-                      |         FastAPI REST Gateway          |
-
-                      |   (Auth, RBAC, Sessions, Metrics)     |
-
-                      +---------+-------------------+---------+
-
-                                |                   |
-
-                 PostgreSQL DB  |                   | gRPC / Management
-
-                                v                   v
-
-                      +-------------------+   +------------------------------------+
-
-                      | Persistence Layer |   |      Flower FL Server (FedAvg)     |
-
-                      | (Schema, Audits)  |   |  - Weighted Model Aggregation      |
-
-                      +-------------------+   |  - Privacy Budget Accounting       |
-
-                                              +---------+----------------+---------+
-
-                                                        |                |
-
-                                            Secure gRPC |                | Secure gRPC
-
-                                                        v                v
-
-                                              +----------------+  +----------------+
-
-                                              | Hospital A     |  | Hospital B     |
-
-                                              | Local PyTorch  |  | Local PyTorch  |
-
-                                              | + DP-SGD       |  | + DP-SGD       |
-
-                                              | (Local EHR)    |  | (Local EHR)    |
-
-                                              +----------------+  +----------------+
-
-```
-
-
+- **FastAPI backend** with asynchronous endpoints.
+- **User registration & login** powered by JWT authentication.
+- **Role‑Based Access Control (RBAC)** for three roles: System Admin, Hospital Admin, Researcher.
+- **SQLAlchemy ORM** models representing users, institutions, datasets, and audit logs.
+- **Alembic migrations** for schema versioning.
+- **React + Vite frontend** styled with Tailwind CSS.
+- **Role‑specific dashboards** (admin, hospital admin, researcher).
+- **Cardiovascular disease dataset** preprocessing and exploratory data analysis scripts.
+- **Machine‑learning models**:
+  - Logistic Regression (scikit‑learn).
+  - Multi‑Layer Perceptron (PyTorch).
+- **Model evaluation** using Accuracy, Precision, Recall, F1‑score, and ROC‑AUC.
+- **Comprehensive test suite** covering backend authentication, RBAC, and basic frontend integration.
 
 ---
 
+## 🛠️ Technology Stack
 
+| Layer | Technologies |
+|-------|---------------|
+| **Frontend** | React 18, Vite, Tailwind CSS, Recharts (charts), Axios |
+| **Backend**   | Python 3.10+, FastAPI, Pydantic, SQLAlchemy, Alembic |
+| **Database**  | PostgreSQL (default); SQLite for local quick testing |
+| **Machine Learning** | scikit‑learn (Logistic Regression), PyTorch (MLP) |
+| **Testing & Development** | pytest, pytest‑asyncio, coverage, pre‑commit, black, isort |
 
-## 📁 Repository Layout
+---
 
-
+## 🏛️ Architecture Overview
 
 ```
++-------------------+        HTTPS / WebSocket        +-------------------+
+|   React UI (TS)   | <----------------------------> |   FastAPI Server  |
+|  (Tailwind CSS)   |                               |  (JWT, RBAC, API) |
++-------------------+                               +---------+---------+
+                                                             |
+                                                             v
+                                                    +-------------------+
+                                                    |   PostgreSQL DB   |
+                                                    +-------------------+
+```
 
-├── backend/            # FastAPI async REST API & WebSocket server
+* The frontend communicates with the backend via REST endpoints protected by JWT tokens.
+* The backend handles authentication, authorisation, business logic and stores audit logs.
+* All persistent data (users, roles, datasets, model artefacts) resides in PostgreSQL.
+* Machine‑learning models are trained server‑side using the processed dataset and the results are persisted for later inspection.
 
+---
+
+## 📁 Project Structure
+
+```
+├── backend/                     # FastAPI application
 │   ├── app/
-
-│   │   ├── api/v1/     # Modular route handlers (auth, users, fl_sessions, metrics, audit)
-
-│   │   ├── core/       # Configurations, JWT security, DB session management
-
-│   │   ├── models/     # SQLAlchemy relational models
-
-│   │   ├── schemas/    # Pydantic data schemas
-
-│   │   ├── services/   # Business logic & FL orchestration
-
-│   │   └── utils/      # Audit logger & helpers
-
+│   │   ├── api/v1/            # Route handlers (auth, users, datasets, etc.)
+│   │   ├── core/               # Configurations, JWT utils, DB session
+│   │   ├── models/             # SQLAlchemy ORM models
+│   │   ├── schemas/            # Pydantic request/response schemas
+│   │   └── services/           # Business‑logic layer
 │   └── requirements.txt
-
-├── federated/          # Flower (flwr) Federated Learning core
-
-│   ├── server/         # FL Server, custom FedAvg strategy, session manager
-
-│   ├── client/         # Hospital edge client runner
-
-│   ├── privacy/        # Differential privacy (noise injection & gradient clipping)
-
-│   └── requirements.txt
-
-├── ml/                 # PyTorch models, synthetic healthcare data, evaluation
-
-│   ├── models/         # Clinical tabular MLP & Medical CNN
-
-│   ├── datasets/       # Synthetic EHR generator & data loaders
-
-│   ├── preprocessing/  # Feature normalizers & categorical encoders
-
-│   ├── evaluation/     # Clinical metrics (ROC-AUC, F1, Sensitivity, Specificity)
-
-│   └── requirements.txt
-
-├── frontend/           # Modern React + Tailwind CSS web interface
-
+│
+├── federated/                   # **Planned** Federated Learning components (placeholder)
+│   └── README.md               # Contains design notes for future FL integration
+│
+├── ml/                          # Machine‑learning code and data utilities
+│   ├── models/                # PyTorch MLP implementation
+│   ├── datasets/               # Synthetic EHR generator & raw CSVs
+│   ├── preprocessing/          # Feature scaling, encoding
+│   └── evaluation/             # Metric calculations (ROC‑AUC, F1, etc.)
+│
+├── frontend/                    # React + Vite UI
 │   ├── src/
-
-│   │   ├── components/ # Reusable UI components & Recharts visualizations
-
-│   │   ├── contexts/   # Auth and Session state contexts
-
-│   │   ├── hooks/      # Custom API & WebSocket hooks
-
-│   │   ├── pages/      # Landing page, Auth, Admin, Hospital, Researcher, FL Monitor
-
-│   │   └── services/   # Axios client & WebSocket handlers
-
+│   │   ├── components/        # Reusable UI components & Recharts visualisations
+│   │   ├── contexts/           # Auth and session state
+│   │   ├── pages/              # Landing, Login, Register, Dashboards per role
+│   │   └── services/           # Axios API wrapper
 │   └── package.json
-
-└── docs/               # Architecture documents and PostgreSQL schema DDL
-
-    ├── architecture/   # Diagrams and system design specs
-
-    └── schema/         # Production SQL schema
-
+│
+├── docs/                        # Architecture diagrams, database schema docs
+│   └── ...
+│
+├── .gitignore
+├── README.md
+└── alembic.ini                  # Alembic configuration for DB migrations
 ```
 
-
-
----
-
-
-
-## 👥 Role-Based Access Control (RBAC)
-
-
-
-| Role | Responsibilities | Key Capabilities |
-
-| :--- | :--- | :--- |
-
-| **System Admin** | System oversight & compliance | Verify and approve institutions, manage users, inspect HIPAA audit trail, monitor cluster health. |
-
-| **Hospital Administrator** | Institutional data governance | Manage local hospital node, inspect registered dataset schema, allocate privacy budget ($\varepsilon$), monitor local client status. |
-
-| **Researcher** | Clinical model experimentation | Create FL projects, define target conditions, set hyperparameters (rounds, DP epsilon, clipping norm), monitor live convergence. |
-
-
+> **Note:** The `federated/` directory contains scaffolding for future federated‑learning work (Flower, differential‑privacy, secure aggregation). It is **not** part of the current functional release.
 
 ---
 
+## 📈 Current Development Status
 
+**Completed:** Phase 1 – 3 (core backend, frontend UI, dataset processing, ML models, tests).
 
-## 🔒 Privacy & Security Model
-
-
-
-1. **Zero Data Movement Principle:** Raw Electronic Health Records (EHR) never exit the hospital boundary.
-
-2. **Differential Privacy (DP-SGD):**
-
-   - Local gradients are clipped to threshold $C$ to bound individual sample sensitivity.
-
-   - Calibrated Gaussian noise $\mathcal{N}(0, \sigma^2)$ is added to guarantee $(\varepsilon, \delta)$-differential privacy.
-
-3. **Stateless Token Authentication:** JSON Web Tokens (JWT) with bcrypt-hashed credentials and fine-grained role authorization.
-
-4. **Immutable Audit Trail:** All administrative, institutional, and training actions are logged with timestamps, user IDs, and client IP addresses.
-
-
+**Planned next steps:**
+- Flower‑based Federated Learning (FedAvg) integration.
+- Differential Privacy mechanisms.
+- Secure aggregation of model updates.
+- Live training monitoring dashboard.
+- Production‑grade deployment, scalability and security hardening.
 
 ---
 
+## 📊 Dataset & Disclaimer
 
+The project ships a **cardiovascular disease dataset** (derived from public UCI data) that mimics real electronic health records. It is used for demonstrating preprocessing, feature engineering, and model training. **This prototype is for educational and research purposes only and is not a clinically validated diagnostic tool.** Users should not rely on the predictions for real patient care.
 
-## 🗺️ Next Steps
+---
 
-Review the detailed architecture and database schema in `/docs` and proceed with implementation upon approval.
+## 🛠️ Installation & Setup
+
+```bash
+# Clone the repository
+git clone <repo-url>
+cd "New folder (2)"
+```
+
+### Backend
+
+```bash
+# Create a virtual environment
+python -m venv .venv
+source .venv/Scripts/activate  # PowerShell: .venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r backend/requirements.txt
+
+# Configure environment variables
+cp backend/.env.example backend/.env
+# Edit backend/.env and set DATABASE_URL (e.g. postgresql://user:pass@localhost:5432/healthcare_fl_db)
+
+# Run database migrations
+alembic -c alembic.ini upgrade head
+
+# Start the FastAPI server
+uvicorn backend/app/main:app --reload
+```
+
+The API will be available at `http://127.0.0.1:8000`.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+# Development server
+npm run dev
+# To build for production
+npm run build
+```
+
+The UI will be served at `http://localhost:5173` (default Vite port).
+
+### Running Tests
+
+```bash
+# Backend tests
+pytest backend/tests -v
+
+# ML pipeline tests
+pytest ml/tests -v
+```
+
+All tests should pass on a fresh clone.
+
+---
+
+## License
+
+No open-source license has been specified yet. All rights are reserved by the project author unless otherwise stated.
+
+---
+
+*For any questions or contributions, please open an issue or submit a pull request.*
