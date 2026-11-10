@@ -1,0 +1,115 @@
+name: CI – Test Suite
+
+
+
+on:
+
+  push:
+
+    branches: [ main ]
+
+  pull_request:
+
+    branches: [ main ]
+
+
+
+jobs:
+
+  test:
+
+    runs-on: ubuntu-latest
+
+    services:
+
+      postgres:
+
+        image: postgres:15-alpine
+
+        env:
+
+          POSTGRES_USER: test_user
+
+          POSTGRES_PASSWORD: test_pass
+
+          POSTGRES_DB: test_db
+
+        ports: ["5432:5432"]
+
+        options: >-
+
+          --health-cmd "pg_isready -U test_user -d test_db"
+
+          --health-interval 10s
+
+          --health-timeout 5s
+
+          --health-retries 5
+
+
+
+    defaults:
+
+      run:
+
+        working-directory: .
+
+
+
+    steps:
+
+      - name: Checkout repository
+
+        uses: actions/checkout@v4
+
+
+
+      - name: Set up Python
+
+        uses: actions/setup-python@v5
+
+        with:
+
+          python-version: "3.12"
+
+
+
+      - name: Install backend dependencies
+
+        run: |
+
+          python -m venv .venv
+
+          source .venv/bin/activate
+
+          pip install -r backend/requirements.txt
+
+
+
+      - name: Export PostgreSQL URL for the app
+
+        run: echo "DATABASE_URL=postgresql+psycopg://test_user:test_pass@localhost:5432/test_db" >> $GITHUB_ENV
+
+
+
+      - name: Run Alembic migrations (PostgreSQL)
+
+        run: |
+
+          source .venv/bin/activate
+
+          alembic upgrade head
+
+
+
+      - name: Run test suite (SQLite + PostgreSQL)
+
+        env:
+
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+        run: |
+
+          source .venv/bin/activate
+
+          pytest -v

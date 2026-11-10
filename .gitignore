@@ -1,0 +1,49 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+*.egg-info/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Node.js
+node_modules/
+frontend/dist/
+
+# Generated datasets
+ml/datasets/data/raw/
+ml/datasets/data/processed/clean.csv
+ml/datasets/data/splits/
+ml/datasets/data/clients/
+
+# Temporary project files
+/major project
+/.FullName
+/fix.patch
+/whitespace.patch
+/clean_all.py
+/clean_all_windows.py
+/fix_*.py
+/fix_*.ps1
+/custom_pytest.ini
+/pytest_cfg.ini
+/pytest_custom.ini
+/pytest_noini.ini
+/temp_pytest.ini
+/ml/pytest_config.ini
+/ml/pytest_local.ini
+/ml/pytest_simple.ini
+
+) {
