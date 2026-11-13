@@ -1,141 +1,235 @@
-"""ml/tests/test_pipeline.py
+"""
+Integration tests for the Phase 3 ML pipeline.
 
-
-
-Basic sanity tests for the ML pipeline.
-
-These tests verify that:
-
-- The preprocessing script runs and produces a cleaned CSV.
-
-- The train/val/test split script creates three CSVs with matching columns.
-
-- Training scripts execute without raising exceptions.
-
-- Saved metric JSON files can be loaded.
-
+Tests:
+1. Data preprocessing.
+2. Train/validation/test splitting.
+3. Training-only scaler fitting.
+4. Non-overlapping hospital client partitions.
+5. MLP and Logistic Regression training.
+6. Model checkpoints and evaluation metrics.
 """
 
-
-
-import os
-
-import subprocess
-
 import json
-
-import pandas as pd
+import subprocess
+import sys
 
 from pathlib import Path
 
-
-
+import joblib
+import pandas as pd
+import pytest
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
+PROCESSED_DIR = BASE_DIR / "ml" / "datasets" / "data" / "processed"
+SPLITS_DIR = BASE_DIR / "ml" / "datasets" / "data" / "splits"
+CLIENTS_DIR = BASE_DIR / "ml" / "datasets" / "data" / "clients"
+CHECKPOINT_DIR = BASE_DIR / "ml" / "models" / "checkpoints"
+
+NUMERIC_COLS = ["age", "height", "weight", "ap_hi", "ap_lo"]
 
 
+def run_module(module_path):
 
+    result = subprocess.run(
+        [sys.executable, "-m", module_path],
+        capture_output=True,
+        text=True,
+        cwd=BASE_DIR,
+        timeout=600,
+    )
 
-def run_module(module_path: str):
-
-    """Execute a Python module via subprocess and raise on non‑zero exit."""
-
-    result = subprocess.run(["python", "-m", module_path], capture_output=True, text=True)
-
-    assert result.returncode == 0, f"{module_path} failed: {result.stderr}"
+    assert result.returncode == 0, (
+        f"{module_path} failed.\n"
+        f"STDOUT:\n{result.stdout}\n"
+        f"STDERR:\n{result.stderr}"
+    )
 
     return result.stdout
 
 
-
 def test_preprocess_runs():
 
-    # Run the preprocessing script
+    output = run_module("ml.datasets.preprocess")
 
-    out = run_module("ml.datasets.preprocess")
+    assert "Cleaned dataset saved" in output
 
-    assert "Saved cleaned data" in out
+    clean_path = PROCESSED_DIR / "clean.csv"
 
-    clean_path = os.path.join(BASE_DIR, "ml", "datasets", "data", "processed", "clean.csv")
-
-    assert os.path.exists(clean_path)
+    assert clean_path.exists()
 
     df = pd.read_csv(clean_path)
 
-    # Expect at least a few thousand rows after cleaning
-
     assert len(df) > 1000
+    assert "cardio" in df.columns
+    assert "id" in df.columns
 
+    # Preprocessing should preserve original numeric units.
+    assert df["age"].between(0, 30000).all()
+    assert df["height"].between(120, 220).all()
 
 
 def test_split_runs():
 
-    out = run_module("ml.datasets.split")
+    output = run_module("ml.datasets.split")
 
-    assert "Train size" in out
+    assert "Dataset splitting and scaling completed" in output
 
-    split_dir = os.path.join(BASE_DIR, "ml", "datasets", "data", "splits")
+    for filename in ["train.csv", "val.csv", "test.csv"]:
+        assert (SPLITS_DIR / filename).exists()
 
-    for split in ["train.csv", "val.csv", "test.csv"]:
+    train = pd.read_csv(SPLITS_DIR / "train.csv")
+    val = pd.read_csv(SPLITS_DIR / "val.csv")
+    test = pd.read_csv(SPLITS_DIR / "test.csv")
 
-        assert os.path.exists(os.path.join(split_dir, split))
+    assert list(train.columns) == list(val.columns)
+    assert list(train.columns) == list(test.columns)
 
-    # Ensure columns match across splits
+    assert len(train) > len(val)
+    assert len(train) > len(test)
 
-    train = pd.read_csv(os.path.join(split_dir, "train.csv"))
+    assert len(train) + len(val) + len(test) > 0
 
-    val = pd.read_csv(os.path.join(split_dir, "val.csv"))
 
-    test = pd.read_csv(os.path.join(split_dir, "test.csv"))
+def test_scaler_fitted_only_on_training_data():
 
-    assert list(train.columns) == list(val.columns) == list(test.columns)
+    scaler_path = PROCESSED_DIR / "scaler.pkl"
 
+    assert scaler_path.exists()
+
+    scaler = joblib.load(scaler_path)
+
+    clean = pd.read_csv(PROCESSED_DIR / "clean.csv")
+    train = pd.read_csv(SPLITS_DIR / "train.csv")
+
+    # Recover original training records using their IDs.
+    train_original = (
+        train[["id"]]
+        .merge(clean[["id"] + NUMERIC_COLS], on="id", how="left")
+    )
+
+    assert not train_original[NUMERIC_COLS].isna().any().any()
+
+    expected_means = train_original[NUMERIC_COLS].mean().values
+
+    # Scaler means must match the original training data only.
+    assert scaler.n_features_in_ == len(NUMERIC_COLS)
+
+    assert scaler.feature_names_in_.tolist() == NUMERIC_COLS
+
+    assert (abs(scaler.mean_ - expected_means) < 1e-6).all()
+
+
+def test_client_partitioning():
+
+    output = run_module("ml.datasets.partition_clients")
+
+    assert "Client partitioning completed successfully" in output
+
+    client_files = [
+        CLIENTS_DIR / "client_1.csv",
+        CLIENTS_DIR / "client_2.csv",
+        CLIENTS_DIR / "client_3.csv",
+    ]
+
+    clients = []
+
+    for path in client_files:
+
+        assert path.exists()
+
+        df = pd.read_csv(path)
+
+        assert len(df) > 0
+
+        clients.append(df)
+
+    all_ids = pd.concat(
+        [client["id"] for client in clients],
+        ignore_index=True,
+    )
+
+    train = pd.read_csv(SPLITS_DIR / "train.csv")
+
+    # Every training record must belong to exactly one client.
+    assert len(all_ids) == len(train)
+    assert all_ids.nunique() == len(train)
+    assert set(all_ids) == set(train["id"])
+
+    # Verify age-based partitioning.
+    clean = pd.read_csv(PROCESSED_DIR / "clean.csv")
+    age_lookup = clean.set_index("id")["age"] / 365.25
+
+    client1_ages = clients[0]["id"].map(age_lookup)
+    client2_ages = clients[1]["id"].map(age_lookup)
+    client3_ages = clients[2]["id"].map(age_lookup)
+
+    assert (client1_ages > 55).all()
+    assert (client2_ages <= 55).all()
+    assert (client3_ages <= 55).all()
+
+    # Verify gender partitioning.
+    assert (clients[1]["gender"] == 1).all()
+    assert (clients[2]["gender"] == 2).all()
 
 
 def test_training_scripts():
 
-    # MLP training
+    output_mlp = run_module("ml.models.train_mlp")
 
-    out_mlp = run_module("ml.models.train_mlp")
+    assert "Test Metrics" in output_mlp
 
-    assert "Test Metrics" in out_mlp
+    output_logreg = run_module("ml.models.train_logreg")
 
-    # Logistic Regression training
+    assert "Test Metrics" in output_logreg
 
-    out_log = run_module("ml.models.train_logreg")
 
-    assert "Test Metrics" in out_log
+def test_model_checkpoints_exist():
 
+    expected_files = [
+        "tabular_mlp.pt",
+        "logreg.joblib",
+    ]
+
+    for filename in expected_files:
+        assert (CHECKPOINT_DIR / filename).exists()
 
 
 def test_metric_files_exist_and_loadable():
 
-    ckpt_dir = os.path.join(BASE_DIR, "ml", "models", "checkpoints")
+    expected_metrics = [
+        "mlp_test_metrics.json",
+        "logreg_test_metrics.json",
+    ]
 
-    for fname in ["mlp_test_metrics.json", "logreg_test_metrics.json"]:
+    required_keys = [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1",
+        "roc_auc",
+        "sensitivity",
+        "specificity",
+    ]
 
-        path = os.path.join(ckpt_dir, fname)
+    for filename in expected_metrics:
 
-        assert os.path.exists(path)
+        path = CHECKPOINT_DIR / filename
 
-        with open(path) as f:
+        assert path.exists()
 
-            data = json.load(f)
+        with open(path, encoding="utf-8") as file:
+            metrics = json.load(file)
 
-        # Check a couple of expected keys
+        for key in required_keys:
 
-        for key in ["accuracy", "roc_auc"]:
-
-            assert key in data
-
-            assert isinstance(data[key], float)
-
+            assert key in metrics
+            assert isinstance(metrics[key], (int, float))
+            assert 0 <= metrics[key] <= 1
 
 
 if __name__ == "__main__":
 
-    # When run directly, invoke pytest programmatically
-
-    pytest.main([os.path.abspath(__file__)])
+    pytest.main([str(Path(__file__).resolve()), "-v"])

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CardiovascularPrediction } from '../../components/predictions/CardiovascularPrediction';
 
 import {
 
@@ -369,6 +370,8 @@ export const ResearcherDashboard = ({ onOpenMonitor }) => {
         />
 
       </div>
+      {/* Cardiovascular Risk Prediction */}
+      <CardiovascularPrediction />
 
 
 

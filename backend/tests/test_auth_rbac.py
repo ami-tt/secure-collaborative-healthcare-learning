@@ -18,17 +18,17 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.main import app
 
-from app.core.config import settings
+from app.core.config import get_settings
 
 
 
-client = TestClient(app)
+# client fixture will be provided by pytest
 
 
 
 
 
-def test_01_root_and_health():
+def test_01_root_and_health(client):
 
     """Verify service root and health check endpoints."""
 
@@ -62,17 +62,43 @@ def test_01_root_and_health():
 
 
 
-def test_02_superadmin_login():
+def test_02_superadmin_login(client):
 
     """Verify seeded superadmin can authenticate and receive JWT token."""
 
     login_payload = {
 
-        "email": settings.FIRST_SUPERADMIN_EMAIL,
+        "email": get_settings().FIRST_SUPERADMIN_EMAIL,
 
-        "password": settings.FIRST_SUPERADMIN_PASSWORD
+        "password": get_settings().FIRST_SUPERADMIN_PASSWORD
 
     }
+
+    from app.core.database import SessionLocal
+    from app.core.security import verify_password
+    from app.models.user import User
+
+    db = SessionLocal()
+
+    test_user = db.query(User).filter(
+        User.email == login_payload["email"]
+    ).first()
+
+    print("\n--- PYTEST LOGIN DIAGNOSTICS ---")
+    print("Email:", login_payload["email"])
+    print("Superadmin exists:", test_user is not None)
+
+    if test_user:
+        print(
+            "Password matches:",
+            verify_password(
+                login_payload["password"],
+                test_user.password_hash
+            )
+        )
+
+    print("Database URL:", db.get_bind().url)
+    db.close()
 
     response = client.post("/api/v1/auth/login", json=login_payload)
 
@@ -86,19 +112,19 @@ def test_02_superadmin_login():
 
     assert data["role"] == "admin"
 
-    assert data["email"] == settings.FIRST_SUPERADMIN_EMAIL
+    assert data["email"] == get_settings().FIRST_SUPERADMIN_EMAIL
 
 
 
 
 
-def test_03_invalid_login():
+def test_03_invalid_login(client):
 
     """Verify that invalid credentials yield 401 Unauthorized."""
 
     response = client.post("/api/v1/auth/login", json={
 
-        "email": settings.FIRST_SUPERADMIN_EMAIL,
+        "email": get_settings().FIRST_SUPERADMIN_EMAIL,
 
         "password": "WrongPassword999!"
 
@@ -112,7 +138,7 @@ def test_03_invalid_login():
 
 
 
-def test_04_unauthenticated_request_rejected():
+def test_04_unauthenticated_request_rejected(client):
 
     """Verify protected endpoints reject requests without a Bearer token."""
 
@@ -124,7 +150,7 @@ def test_04_unauthenticated_request_rejected():
 
 
 
-def test_05_user_registration_and_login():
+def test_05_user_registration_and_login(client):
 
     """Verify new user registration and subsequent authentication with repeatable unique email."""
 
@@ -198,7 +224,7 @@ def test_05_user_registration_and_login():
 
 
 
-def test_06_rbac_enforcement_admin_endpoints():
+def test_06_rbac_enforcement_admin_endpoints(client):
 
     """Verify RBAC enforces admin-only restrictions against non-admin roles."""
 
@@ -206,9 +232,9 @@ def test_06_rbac_enforcement_admin_endpoints():
 
     admin_login = client.post("/api/v1/auth/login", json={
 
-        "email": settings.FIRST_SUPERADMIN_EMAIL,
+        "email": get_settings().FIRST_SUPERADMIN_EMAIL,
 
-        "password": settings.FIRST_SUPERADMIN_PASSWORD
+        "password": get_settings().FIRST_SUPERADMIN_PASSWORD
 
     }).json()
 
@@ -292,15 +318,15 @@ def test_06_rbac_enforcement_admin_endpoints():
 
 
 
-def test_07_institution_registration_and_status_update():
+def test_07_institution_registration_and_status_update(client):
 
     """Verify hospital registration and administrative approval flow."""
 
     admin_login = client.post("/api/v1/auth/login", json={
 
-        "email": settings.FIRST_SUPERADMIN_EMAIL,
+        "email": get_settings().FIRST_SUPERADMIN_EMAIL,
 
-        "password": settings.FIRST_SUPERADMIN_PASSWORD
+        "password": get_settings().FIRST_SUPERADMIN_PASSWORD
 
     }).json()
 
@@ -352,7 +378,7 @@ def test_07_institution_registration_and_status_update():
 
 
 
-def test_08_dataset_metadata_registration():
+def test_08_dataset_metadata_registration(client):
 
     """Verify Hospital Admin can register dataset metadata for their institution."""
 
@@ -406,7 +432,7 @@ def test_08_dataset_metadata_registration():
 
 
 
-def test_09_researcher_project_and_session_creation():
+def test_09_researcher_project_and_session_creation(client):
 
     """Verify Researcher can create FL projects and configure training sessions."""
 
@@ -498,15 +524,15 @@ def test_09_researcher_project_and_session_creation():
 
 
 
-def test_10_audit_trail_recorded():
+def test_10_audit_trail_recorded(client):
 
     """Verify HIPAA audit trail has recorded entries for all sensitive operations."""
 
     admin_login = client.post("/api/v1/auth/login", json={
 
-        "email": settings.FIRST_SUPERADMIN_EMAIL,
+        "email": get_settings().FIRST_SUPERADMIN_EMAIL,
 
-        "password": settings.FIRST_SUPERADMIN_PASSWORD
+        "password": get_settings().FIRST_SUPERADMIN_PASSWORD
 
     }).json()
 

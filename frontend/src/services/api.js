@@ -271,6 +271,17 @@ export const systemService = {
   },
 
 };
+// Cardiovascular Risk Prediction Service
+export const predictionService = {
+  predict: async (patientData) => {
+    const response = await apiClient.post(
+      '/predictions/predict',
+      patientData
+    );
+
+    return response.data;
+  },
+};
 
 
 

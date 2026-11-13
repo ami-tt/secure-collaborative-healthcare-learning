@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+backend/.temp_test.env
 
 # Python cache and virtual environments
 __pycache__/
@@ -28,6 +29,20 @@ ml/datasets/data/processed/clean.csv
 ml/datasets/data/splits/
 ml/datasets/data/clients/
 
+# Temporary and debugging files
+scratch/
+backend/scratch/
+debug_*.py
+*_debug*.py
+tmp_*.py
+test_output.txt
+pytest_output.txt
+pytest_full.txt
+
+# Backup files
+*_backup.*
+*_old.*
+
 # Temporary project files
 /major project
 /.FullName
@@ -45,5 +60,3 @@ ml/datasets/data/clients/
 /ml/pytest_config.ini
 /ml/pytest_local.ini
 /ml/pytest_simple.ini
-
-) {

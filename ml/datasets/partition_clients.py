@@ -1,183 +1,128 @@
-"""ml/datasets/partition_clients.py
+"""
+Create three non-overlapping simulated hospital datasets.
 
+Client 1: Older patients (>55 years).
+Client 2: Younger patients (<=55 years), gender 1.
+Client 3: Younger patients (<=55 years), gender 2.
 
-
-Create three simulated hospital client datasets from the training split with controlled non‑IID distributions.
-
-
-
-Clients:
-
-- **client_1.csv** – Older patients (age > 55 years).
-
-- **client_2.csv** – Younger patients (age ≤ 55 years).
-
-- **client_3.csv** – Balanced age but skewed gender ratio (more females).
-
-
-
-All files are saved under `ml/datasets/data/clients/`.
-
+All clients are created exclusively from the training split.
+Original age values are recovered using patient IDs.
 """
 
-
-
-import os
+from pathlib import Path
 
 import pandas as pd
 
-from sklearn.model_selection import train_test_split
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+CLEAN_PATH = (
+    PROJECT_ROOT / "ml" / "datasets" / "data"
+    / "processed" / "clean.csv"
+)
 
+TRAIN_PATH = (
+    PROJECT_ROOT / "ml" / "datasets" / "data"
+    / "splits" / "train.csv"
+)
 
-BASE_DIR = os.path.dirname(__file__)
+CLIENTS_DIR = (
+    PROJECT_ROOT / "ml" / "datasets" / "data" / "clients"
+)
 
-SPLITS_PATH = os.path.join(BASE_DIR, "data", "splits", "train.csv")
-
-CLIENTS_DIR = os.path.join(BASE_DIR, "data", "clients")
-
-os.makedirs(CLIENTS_DIR, exist_ok=True)
-
-
-
-TARGET_COL = "cardio"
+CLIENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ID_COL = "id"
 
 
-
-def load_train():
-
-    return pd.read_csv(SPLITS_PATH)
-
-
-
-def client_old(df: pd.DataFrame):
-
-    # Age column is in days; convert to years for the threshold
-
-    df = df.copy()
-
-    df["age_years"] = df["age"] / 365.25
-
-    mask = df["age_years"] > 55
-
-    return df[mask]
-
-
-
-def client_young(df: pd.DataFrame):
-
-    df = df.copy()
-
-    df["age_years"] = df["age"] / 365.25
-
-    mask = df["age_years"] <= 55
-
-    return df[mask]
-
-
-
-def client_gender_skew(df: pd.DataFrame):
-
-    # Aim for approx 70% female (gender 2) and 30% male (gender 1)
-
-    df = df.copy()
-
-    # gender encoded as 1 = male, 2 = female in the original dataset
-
-    female = df[df["gender"] == 2]
-
-    male = df[df["gender"] == 1]
-
-    # Down‑sample males to achieve 30% proportion
-
-    target_female_ratio = 0.7
-
-    total_needed = len(df)
-
-    female_needed = int(total_needed * target_female_ratio)
-
-    male_needed = total_needed - female_needed
-
-    female_sample = female.sample(n=min(female_needed, len(female)), random_state=42)
-
-    male_sample = male.sample(n=min(male_needed, len(male)), random_state=42)
-
-    return pd.concat([female_sample, male_sample])
-
-
-
 def main():
 
-    train = load_train()
+    clean_df = pd.read_csv(CLEAN_PATH)
+    train_df = pd.read_csv(TRAIN_PATH)
 
-    # Drop the temporary age_years column if present
+    # Recover original age values using patient IDs.
+    age_lookup = clean_df.set_index(ID_COL)["age"]
 
-    if "age_years" in train.columns:
+    train_df = train_df.copy()
 
-        train = train.drop(columns=["age_years"])  # safety
+    train_df["original_age_days"] = train_df[ID_COL].map(
+        age_lookup
+    )
 
+    if train_df["original_age_days"].isna().any():
+        raise ValueError("Missing original age values detected.")
 
+    train_df["age_years"] = (
+        train_df["original_age_days"] / 365.25
+    )
 
-    client1 = client_old(train)
+    # Client 1: Older patients.
+    client1 = train_df[
+        train_df["age_years"] > 55
+    ].copy()
 
-    client2 = client_young(train)
+    # Younger patient pool.
+    younger = train_df[
+        train_df["age_years"] <= 55
+    ].copy()
 
-    client3 = client_gender_skew(train)
+    # Client 2: Younger patients with gender 1.
+    client2 = younger[
+        younger["gender"] == 1
+    ].copy()
 
+    # Client 3: Younger patients with gender 2.
+    client3 = younger[
+        younger["gender"] == 2
+    ].copy()
 
+    clients = {
+        "client_1.csv": client1,
+        "client_2.csv": client2,
+        "client_3.csv": client3,
+    }
 
-    # Ensure roughly equal sizes – if any client is too small, fallback to stratified split
+    # Remove temporary columns and save.
+    for filename, client_df in clients.items():
 
-    sizes = [len(client1), len(client2), len(client3)]
-
-    print("Client sizes before balancing:", sizes)
-
-
-
-    # To keep the total training data size unchanged we will sample from the original
-
-    # training set to create three partitions of equal size (≈ 1/3 each).
-
-    total = len(train)
-
-    per_client = total // 3
-
-    # Helper to down‑sample to per_client rows while preserving class distribution
-
-    def stratified_downsample(df, n):
-
-        if len(df) <= n:
-
-            return df
-
-        return df.groupby(TARGET_COL, group_keys=False).apply(
-
-            lambda x: x.sample(int(n * len(x) / len(df)), random_state=42)
-
+        client_df = client_df.drop(
+            columns=["original_age_days", "age_years"]
         )
 
-    client1 = stratified_downsample(client1, per_client)
+        client_df.to_csv(
+            CLIENTS_DIR / filename,
+            index=False
+        )
 
-    client2 = stratified_downsample(client2, per_client)
+        print(f"{filename}: {len(client_df)} records")
 
-    client3 = stratified_downsample(client3, per_client)
+    # Verify that all clients contain records.
+    if any(df.empty for df in clients.values()):
+        raise ValueError(
+            "At least one client is empty. Check gender distribution."
+        )
 
+    # Verify no patient appears in multiple clients.
+    all_ids = pd.concat(
+        [df[ID_COL] for df in clients.values()],
+        ignore_index=True
+    )
 
+    if all_ids.duplicated().any():
+        raise ValueError(
+            "Duplicate patient IDs found across clients."
+        )
 
-    # Save
+    # Verify all training records are assigned.
+    if len(all_ids) != len(train_df):
+        raise ValueError(
+            "Some training records were not assigned to clients."
+        )
 
-    client1.to_csv(os.path.join(CLIENTS_DIR, "client_1.csv"), index=False)
-
-    client2.to_csv(os.path.join(CLIENTS_DIR, "client_2.csv"), index=False)
-
-    client3.to_csv(os.path.join(CLIENTS_DIR, "client_3.csv"), index=False)
-
-    print("Clients saved:", [os.path.join(CLIENTS_DIR, f"client_{i}.csv") for i in range(1,4)])
-
+    print("\nClient partitioning completed successfully.")
+    print(f"Total training records: {len(train_df)}")
+    print(f"Total client records: {len(all_ids)}")
+    print("Duplicate patient IDs: 0")
 
 
 if __name__ == "__main__":
-
     main()

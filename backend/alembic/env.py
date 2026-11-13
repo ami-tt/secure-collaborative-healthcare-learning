@@ -1,221 +1,153 @@
-"""Alembic environment configuration.
+"""
+Alembic environment configuration.
 
+This file configures SQLAlchemy migrations using the database URL
+provided through Alembic configuration.
 
-
-This file is executed by Alembic when running migration commands.
-
-It sets up the SQLAlchemy engine using the same DATABASE_URL
-
-that the application uses (via pydantic Settings).  The Base
-
-metadata is imported from the application's core database module
-
-so that ``autogenerate`` can detect all existing models.
-
+The application's SQLAlchemy Base metadata is imported so Alembic
+can detect all registered models during migrations.
 """
 
-
-
 import os
-
 import sys
-
 from logging.config import fileConfig
 
-
-
 from alembic import context
-
-
-
-# Add the project root to the import path so ``app`` package can be imported.
-
-CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
-
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
-
-sys.path.append(PROJECT_ROOT)
-
-
-
-# Import the application's settings to get DATABASE_URL.
-
-from app.core.config import settings
-
-
-
-# this is the Alembic Config object, which provides
-
-# access to the values within the .ini file in use.
-
-config = context.config
-
-
-
-# Interpret the config file for Python logging.
-
-if config.config_file_name is not None:
-
-    fileConfig(config.config_file_name)
-
-
-
-# -----------------------------------------------------------------------------
-
-# Set up SQLAlchemy engine using the same DATABASE_URL the app uses.
-
-# ``engine_from_config`` reads the ``sqlalchemy.url`` key from alembic.ini.
-
-# We override it with the environment variable / Settings value.
-
-# -----------------------------------------------------------------------------
-
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-
-
-
 from sqlalchemy import engine_from_config, pool
 
 
+# ---------------------------------------------------------------------
+# Add backend directory to Python path
+# ---------------------------------------------------------------------
 
-def get_engine():
+CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 
-    return engine_from_config(
-
-        config.get_section(config.config_ini_section),
-
-        prefix="sqlalchemy.",
-
-        poolclass=pool.NullPool,
-
-    )
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 
+# ---------------------------------------------------------------------
+# Alembic configuration
+# ---------------------------------------------------------------------
 
-engine = get_engine()
+config = context.config
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
 
+# IMPORTANT:
+# Do not override sqlalchemy.url here.
+# Alembic must respect the URL supplied by:
+#   1. alembic.ini
+#   2. alembic_cfg.set_main_option() in integration tests
+#
+# This allows migrations to run against the intended database.
 
-# Import the Base metadata that includes all model definitions.
+
+# ---------------------------------------------------------------------
+# Import application metadata and models
+# ---------------------------------------------------------------------
 
 from app.core.database import Base
 
-
-
-# Ensure all model modules are imported so that their tables are registered
-
-# with Base.metadata.  Importing the modules is enough – the classes are
-
-# defined at import time.
-
-# NOTE: If new models are added, import them here as well.
-
 import app.models.user  # noqa: F401
-
 import app.models.institution  # noqa: F401
-
 import app.models.dataset  # noqa: F401
-
 import app.models.audit  # noqa: F401
-
 import app.models.fl_project  # noqa: F401
-
 import app.models.fl_session  # noqa: F401
-
-import app.models.fl_session_participant  # noqa: F401
-
+import app.models.fl_participant  # noqa: F401
 import app.models.base  # noqa: F401
+import app.models.checkpoint  # noqa: F401
+import app.models.metric  # noqa: F401
 
-
-
-# -----------------------------------------------------------------------------
-
-# target_metadata is what Alembic uses for "autogenerate" support.
-
-# -----------------------------------------------------------------------------
 
 target_metadata = Base.metadata
 
 
+# ---------------------------------------------------------------------
+# Create migration engine
+# ---------------------------------------------------------------------
 
-def run_migrations_offline():
+def get_engine():
+    """Create an engine using the URL supplied by Alembic configuration."""
 
-    """Run migrations in 'offline' mode.
+    section = config.get_section(config.config_ini_section)
 
+    if section is None:
+        raise RuntimeError(
+            "Alembic configuration section is missing."
+        )
 
+    database_url = config.get_main_option("sqlalchemy.url")
 
-    This configures the context with just a URL and not an Engine, and
+    if not database_url:
+        raise RuntimeError(
+            "Database URL is missing from Alembic configuration."
+        )
 
-    then calls ``context.run_migrations()``.
-
-    """
-
-    url = config.get_main_option("sqlalchemy.url")
-
-    context.configure(
-
-        url=url,
-
-        target_metadata=target_metadata,
-
-        literal_binds=True,
-
-        dialect_opts={"paramstyle": "named"},
-
+    return engine_from_config(
+        section,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
     )
 
 
+# ---------------------------------------------------------------------
+# Offline migrations
+# ---------------------------------------------------------------------
+
+def run_migrations_offline():
+    """Run migrations without creating a database connection."""
+
+    database_url = config.get_main_option("sqlalchemy.url")
+
+    context.configure(
+        url=database_url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        compare_server_default=True,
+    )
 
     with context.begin_transaction():
-
         context.run_migrations()
 
 
-
-
+# ---------------------------------------------------------------------
+# Online migrations
+# ---------------------------------------------------------------------
 
 def run_migrations_online():
+    """Run migrations using a live database connection."""
 
-    """Run migrations in 'online' mode.
+    connectable = get_engine()
 
+    try:
+        with connectable.connect() as connection:
 
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                compare_type=True,
+                compare_server_default=True,
+            )
 
-    In this scenario we create an Engine and associate a connection with the
+            with context.begin_transaction():
+                context.run_migrations()
 
-    context.
-
-    """
-
-    connectable = engine
-
-
-
-    with connectable.connect() as connection:
-
-        context.configure(
-
-            connection=connection,
-
-            target_metadata=target_metadata,
-
-            compare_type=True,
-
-            compare_server_default=True,
-
-        )
+    finally:
+        connectable.dispose()
 
 
-
-        with context.begin_transaction():
-
-            context.run_migrations()
-
-
+# ---------------------------------------------------------------------
+# Execute migrations
+# ---------------------------------------------------------------------
 
 if context.is_offline_mode():
-
     run_migrations_offline()
-
 else:
-
     run_migrations_online()

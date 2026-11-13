@@ -58,7 +58,7 @@ class Institution(Base, BaseModelMixin):
 
     # Relationships
 
-    users = relationship("User", back_populates="institution", cascade="all, delete-orphan")
+    users = relationship("User", back_populates="institution", cascade="all, delete-orphan", foreign_keys="User.institution_id")
 
     datasets = relationship("Dataset", back_populates="institution", cascade="all, delete-orphan")
 

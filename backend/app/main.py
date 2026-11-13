@@ -43,11 +43,10 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
 
     try:
-
-        init_db(db)
-
+        # Seed data only in development environment
+        if settings.ENVIRONMENT != "production":
+            init_db(db)
     finally:
-
         db.close()
 
     yield
@@ -110,7 +109,7 @@ app.add_middleware(
 
     CORSMiddleware,
 
-    allow_origins=settings.BACKEND_CORS_ORIGINS if settings.BACKEND_CORS_ORIGINS else ["*"],
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
 
     allow_credentials=True,
 

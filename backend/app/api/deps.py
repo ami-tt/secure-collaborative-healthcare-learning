@@ -16,7 +16,10 @@ from app.models.user import User, UserRole
 
 
 
-security_scheme = HTTPBearer(auto_error=False)
+security_scheme = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth"
+)
 
 
 
